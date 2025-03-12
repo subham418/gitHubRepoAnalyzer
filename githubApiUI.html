@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Repo Analyzer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-black text-white flex flex-col items-center p-6">
+    <h1 class="text-3xl font-bold mb-4 text-yellow-400">GitHub Repo Analyzer</h1>
+    <p class="text-gray-400 text-sm mb-4">Table shows a maximum of 10 repositories, but the chart displays all language usage among all repositories.</p>
+    <div class="mb-4">
+        <input id="username" type="text" placeholder="Enter GitHub Username" 
+               class="p-2 border rounded-md shadow-md bg-gray-800 text-white">
+        <button onclick="fetchData()" class="bg-blue-500 text-white p-2 rounded-md ml-2 transition-transform transform active:scale-95" id="submitBtn">Submit</button>
+        <button onclick="clearScreen()" class="bg-red-500 text-white p-2 rounded-md ml-2 transition-transform transform active:scale-95" id="clearBtn">Clear</button>
+    </div>
+    
+    <div id="loading" class="hidden flex justify-center items-center mt-4">
+        <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-white"></div>
+    </div>
+    
+    <div class="w-full px-10"> 
+        <table class="w-full bg-gray-900 shadow-lg rounded-lg overflow-hidden">
+            <thead class="bg-purple-600 text-white">
+                <tr>
+                    <th class="p-2 text-left">Index</th>
+                    <th class="p-2 text-left">Repository Name</th>
+                    <th class="p-2 text-left">URL</th>
+                    <th class="p-2 text-left">Languages</th>
+                    <th class="p-2 text-left">Created At</th>
+                    <th class="p-2 text-left">Last Modified</th>
+                </tr>
+            </thead>
+            <tbody id="repoTable" class="text-left text-gray-300"></tbody>
+        </table>
+    </div>
+    
+    <div class="mt-6 w-1/4 max-w-sm">
+        <canvas id="languageChart"></canvas>
+    </div>
+    
+    <script>
+        let languageChart;
+
+        async function fetchData() {
+            const username = document.getElementById('username').value.trim();
+            const submitBtn = document.getElementById('submitBtn');
+            const clearBtn = document.getElementById('clearBtn');
+            const loading = document.getElementById('loading');
+
+            if (!username) return alert('Please enter a username');
+            if (/^\d+$/.test(username)) return alert('Username cannot be only numbers');
+
+            submitBtn.disabled = true;
+            clearBtn.disabled = true;
+            submitBtn.classList.add('opacity-50');
+            clearBtn.classList.add('opacity-50');
+            loading.classList.remove('hidden');
+
+            try {
+                const repoResponse = await fetch(`http://localhost:8080/github/${username}/repos`);
+                const langResponse = await fetch(`http://localhost:8080/github/${username}/lang/percentage`);
+                
+                if (!repoResponse.ok || !langResponse.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+                
+                let repoData = await repoResponse.json();
+                const langData = await langResponse.json();
+
+                if (repoData.message === "GitHub API rate limit exceeded" || langData.message === "GitHub API rate limit exceeded") {
+                    throw new Error("GitHub API rate limit exceeded");
+                }
+                
+                // Limit to 10 repositories
+                repoData = repoData.slice(0, 10);
+                
+                // Populate table
+                const tableBody = document.getElementById('repoTable');
+                tableBody.innerHTML = '';
+                repoData.forEach((repo, index) => {
+                    const row = `<tr class='border-b border-gray-700'>
+                        <td class='p-2 text-left'>${index + 1}</td>
+                        <td class='p-2 text-left'>${repo["Repo Name"]}</td>
+                        <td class='p-2 text-left'><a href='${repo.URL}' class='text-blue-400' target='_blank'>Link</a></td>
+                        <td class='p-2 text-left'>${Object.keys(repo.languages).join(', ')}</td>
+                        <td class='p-2 text-left'>${repo["Created At"]}</td>
+                        <td class='p-2 text-left'>${repo["Last modified"]}</td>
+                    </tr>`;
+                    tableBody.innerHTML += row;
+                });
+                
+                // Render chart
+                const ctx = document.getElementById('languageChart').getContext('2d');
+                if (languageChart instanceof Chart) {
+                    languageChart.destroy();
+                }
+                languageChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(langData),
+                        datasets: [{
+                            data: Object.values(langData),
+                            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4CAF50'],
+                        }]
+                    },
+                    options: { responsive: true }
+                });
+            } catch (error) {
+                alert('Error fetching data: ' + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                clearBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50');
+                clearBtn.classList.remove('opacity-50');
+                loading.classList.add('hidden');
+            }
+        }
+
+        function clearScreen() {
+            document.getElementById('username').value = '';
+            document.getElementById('repoTable').innerHTML = '';
+            if (languageChart instanceof Chart) {
+                languageChart.destroy();
+            }
+        }
+    </script>
+</body>
+</html>
